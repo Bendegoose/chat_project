@@ -1,7 +1,26 @@
 import { useState } from 'react';
+import { useNavigate, Navigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import {
+    Form,
+    FormGroup,
+    Label,
+    Input,
+    Button,
+    Alert,
+    Container,
+    Row,
+    Col,
+    Card,
+    CardBody,
+    CardTitle
+} from "reactstrap";
 
 export default function Register() {
     const [userData, setUserData] = useState({})
+    const [error, setError] = useState(null);
+    const { isAuthenticated, loading } = useAuth();
+    const navigate = useNavigate();
 
     const onChange = (e) => setUserData({
         ...userData,
@@ -10,6 +29,7 @@ export default function Register() {
 
     async function handleRegister(e) {
         e.preventDefault();
+        setError(null);
 
         try {
             const response = await fetch("/api/register", {
@@ -26,32 +46,63 @@ export default function Register() {
                 throw new Error(data.error);
             }
 
-            console.log("Success:", data);
+            navigate('/login');
         } catch (err) {
-            console.error(err);
+            setError(err.message);
         }
     }
 
+    if (loading) return <p>Betöltés...</p>;
+    if (isAuthenticated) return <Navigate to="/" replace />;
+
     return (
-        <form onSubmit={handleRegister}>
-            <div>
-                <label htmlFor="username">Username</label>
-                <input id="username" type="text" onChange={onChange} required />
-            </div>
+        <div>
+            <Container>
+                <Row>
+                    <Col xs="12" md="6" lg="5">
+                        <Card>
+                            <CardBody>
+                                <CardTitle>
+                                    Register
+                                </CardTitle>
 
-            <div>
-                <label htmlFor="password">Password</label>
-                <input id="password" type="password" onChange={onChange} required />
-            </div>
+                                <Form onSubmit={handleRegister}>
+                                    <FormGroup>
+                                        <Label for="username">Username</Label>
+                                        <Input id="username" type="text" autoComplete="username" onChange={onChange} required />
+                                    </FormGroup>
 
-            <div>
-                <label htmlFor="inviteCode">Invite Code</label>
-                <input id="inviteCode" type="text" onChange={onChange} required />
-            </div>
+                                    <FormGroup>
+                                        <Label for="password">Password</Label>
+                                        <Input id="password" type="password" autoComplete="current-password" onChange={onChange} required/>
+                                    </FormGroup>
 
-            <button type="submit">
-                Sign Up
-            </button>
-        </form>
+                                    <FormGroup>
+                                        <Label for="password">Invite Code</Label>
+                                        <Input id="password" type="text" onChange={onChange} required/>
+                                    </FormGroup>
+
+                                    {error && (
+                                        <Alert>
+                                            {error}
+                                        </Alert>
+                                    )}
+
+                                    <Button>
+                                        Register
+                                    </Button>
+                                </Form>
+                                <div>
+                                    <span onClick={() => navigate("/login")} style={{ cursor: "pointer", textDecoration: "underline" }}>
+                                        Log In
+                                    </span>
+                                </div>
+                            </CardBody>
+                        </Card>
+                    </Col>
+
+                </Row>
+            </Container>
+        </div>
     );
 }
