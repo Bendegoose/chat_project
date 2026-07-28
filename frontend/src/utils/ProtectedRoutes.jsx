@@ -8,5 +8,5 @@ export default function ProtectedRoutes() {
         return <p>Betöltés...</p>;
     }
 
-    return isAuthenticated ? <Outlet/> : <Navigate to="/login" replace />;
+    return isAuthenticated ? <Outlet/> : <Navigate to="/auth" replace />;
 }

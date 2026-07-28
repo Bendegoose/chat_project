@@ -51,7 +51,7 @@ export default function Chat() {
     
     async function handleLogout() {
         await logout();
-        navigate('/login');
+        navigate('/auth');
     }
 
     return (
@@ -76,8 +76,7 @@ export default function Chat() {
                                             src='https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_1280.png'
                                             alt="profile"
                                             className="rounded-circle"
-                                            style={{ width: "40px", height: "40px", objectFit: "cover" }}
-                                        />
+                                            style={{ width: "40px", height: "40px", objectFit: "cover" }}/>
                                     </DropdownToggle>
                                     <DropdownMenu>
                                         <DropdownItem onClick={handleLogout}>Logout</DropdownItem>
@@ -142,12 +141,3 @@ export default function Chat() {
         </div>
     )
 }
-{/* <Card className="h-100 position-relative">
-    <CardBody className="overflow-auto">
-        Messages...
-    </CardBody>
-
-    <div className="position-absolute bottom-0 w-100 p-3">
-        <Input placeholder="Write a message..." />
-    </div>
-</Card> */}
