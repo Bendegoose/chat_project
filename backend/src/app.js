@@ -23,7 +23,7 @@ app.post("/api/register", async (req, res) => {
     try {
         const { username, password, inviteCode } = req.body;
 
-        const inviteResult = await database.query("SELECT * FROM invite_codes WHERE code = $1",[inviteCode]);
+        const inviteResult = await database.query("SELECT * FROM invite_codes WHERE code = $1", [inviteCode]);
 
         if (inviteResult.rows.length === 0) {
             return res.status(400).json({
@@ -31,7 +31,7 @@ app.post("/api/register", async (req, res) => {
             });
         }
 
-        const userResult = await database.query("SELECT id FROM users WHERE username = $1",[username]);
+        const userResult = await database.query("SELECT id FROM users WHERE username = $1", [username]);
 
         if (userResult.rows.length > 0) {
             return res.status(400).json({
@@ -43,7 +43,7 @@ app.post("/api/register", async (req, res) => {
         await database.query("INSERT INTO users (username, password) VALUES ($1, $2)", [username, hashedPassword]);
 
         res.json({
-            success: true
+            success: "Successful registration"
         });
 
     } catch (err) {
@@ -60,8 +60,8 @@ app.post("/api/login", async (req, res) => {
 
         const result = await database.query("SELECT id, username, password FROM users WHERE username = $1", [username]);
 
-        if(result.rows.length === 0){
-          return res.status(401).json({
+        if (result.rows.length === 0) {
+            return res.status(401).json({
                 error: "Invalid username or password"
             });
         }
@@ -69,16 +69,16 @@ app.post("/api/login", async (req, res) => {
         const user = result.rows[0];
         const match = await bcrypt.compare(password, user.password);
 
-        if(!match){
-          return res.status(401).json({
-            error: "Invalid username or password"
-          });
+        if (!match) {
+            return res.status(401).json({
+                error: "Invalid username or password"
+            });
         }
 
         const token = jwt.sign(
-          {userId: user.id, username: user.username},
-          process.env.JWT_SECRET,
-          {expiresIn: process.env.JWT_EXPIRES_IN || '1h'}
+            { userId: user.id, username: user.username },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN || '1h' }
         );
 
         res.cookie('token', token, {
@@ -98,6 +98,32 @@ app.post("/api/login", async (req, res) => {
     }
 });
 
+app.get("/api/conversations", authenticateToken, async (req, res) => {
+    const userId = req.user.userId
+    const result = await database.query(
+        `
+        SELECT 
+            c.id AS conversation_id,
+            u.username
+        FROM conversation_members my_cm
+        JOIN conversations c 
+            ON c.id = my_cm.conversation_id
+        JOIN conversation_members other_cm 
+            ON other_cm.conversation_id = c.id 
+        AND other_cm.user_id != my_cm.user_id
+        JOIN users u 
+            ON u.id = other_cm.user_id
+        WHERE my_cm.user_id = $1
+        `,
+        [userId]
+    );
+
+    res.json({
+        success: true,
+        conversations: result.rows
+    });
+});
+
 app.post("/api/logout", (req, res) => {
     res.clearCookie('token', {
         httpOnly: true,
@@ -112,5 +138,5 @@ app.get("/api/me", authenticateToken, async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend running: http://localhost:${PORT}`);
+    console.log(`Backend running: http://localhost:${PORT}`);
 });
