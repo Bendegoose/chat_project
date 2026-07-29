@@ -102,18 +102,22 @@ app.get("/api/conversations", authenticateToken, async (req, res) => {
     const userId = req.user.userId
     const result = await database.query(
         `
-        SELECT 
+        SELECT DISTINCT ON (c.id)
             c.id AS conversation_id,
-            u.username
+            u.username,
+            m.encrypted_message
         FROM conversation_members my_cm
-        JOIN conversations c 
-            ON c.id = my_cm.conversation_id
-        JOIN conversation_members other_cm 
-            ON other_cm.conversation_id = c.id 
+        JOIN conversations c
+        ON c.id = my_cm.conversation_id
+        JOIN conversation_members other_cm
+        ON other_cm.conversation_id = c.id
         AND other_cm.user_id != my_cm.user_id
-        JOIN users u 
-            ON u.id = other_cm.user_id
+        JOIN users u
+        ON u.id = other_cm.user_id
+        JOIN messages m
+        ON m.conversation_id = c.id
         WHERE my_cm.user_id = $1
+        ORDER BY c.id, m.created_at DESC
         `,
         [userId]
     );
@@ -121,6 +125,31 @@ app.get("/api/conversations", authenticateToken, async (req, res) => {
     res.json({
         success: true,
         conversations: result.rows
+    });
+});
+
+app.get("/api/messages/:id", authenticateToken, async (req, res) => {
+    const conversationId = req.params.id;
+    const result = await database.query(
+        `
+        SELECT
+            m.id,
+            m.sender_id,
+            m.encrypted_message,
+            m.created_at,
+            u.username
+        FROM messages m
+        JOIN users u
+        ON u.id = m.sender_id
+        WHERE m.conversation_id = $1
+        ORDER BY m.created_at ASC
+        `,
+        [conversationId]
+    );
+
+    res.json({
+        success: true,
+        messages: result.rows
     });
 });
 
