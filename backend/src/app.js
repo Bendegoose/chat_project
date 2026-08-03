@@ -91,7 +91,6 @@ app.post("/api/login", async (req, res) => {
         res.json({ success: true, username: user.username });
 
     } catch (err) {
-        console.error(err);
         res.status(500).json({
             error: "Server error"
         });
@@ -128,7 +127,7 @@ app.get("/api/conversations", authenticateToken, async (req, res) => {
     });
 });
 
-app.get("/api/messages/:id", authenticateToken, async (req, res) => {
+app.get("/api/message/:id", authenticateToken, async (req, res) => {
     const conversationId = req.params.id;
     const result = await database.query(
         `
@@ -151,6 +150,47 @@ app.get("/api/messages/:id", authenticateToken, async (req, res) => {
         success: true,
         messages: result.rows
     });
+});
+
+app.post("/api/sendMessage", authenticateToken, async (req, res) => {
+    const userId = req.user.userId;
+    const {conversationId, message} = req.body;
+
+    if (!message?.trim()) {
+        return res.status(400).json({
+            error: "Message cannot be empty"
+        });
+    }
+
+    const isMember = await database.query(
+        `
+        SELECT 1 
+        FROM conversation_members
+        WHERE conversation_id = $1
+        AND user_id = $2
+        `,
+        [conversationId, userId] 
+    )
+
+    if(isMember.rowCount === 0){
+        return res.status(403).json({
+            error: "Not a member of this conversation"
+        });
+    }
+
+    await database.query(
+        `
+        INSERT INTO messages (
+            conversation_id,
+            sender_id,
+            encrypted_message
+        )
+        VALUES ($1, $2, $3)
+        `,
+        [conversationId, userId, message]
+    )
+
+    res.json({ success: true });
 });
 
 app.post("/api/logout", (req, res) => {

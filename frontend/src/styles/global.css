@@ -2,3 +2,12 @@ html, body, #root {
     height: 100%;
     overflow: hidden;
 }
+
+.hide-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE és régi Edge */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, új Edge */
+} 
