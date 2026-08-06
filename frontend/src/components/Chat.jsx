@@ -39,6 +39,8 @@ export default function Chat() {
     const [selectedConversationId, setSelectedConversationId] = useState(null);
     const [messageText, setMessageText] = useState("");
     const [search, setSearch] = useState("");
+    const [query, setQuery] = useState("");
+    const [searchResults, setSearchResults] = useState([]);
 
     useEffect(() => {
         async function fetchData() {
@@ -67,7 +69,16 @@ export default function Chat() {
                     messages: null
                 };
             });
-            setConversations(conversationsObj);
+            setConversations((prev) => {
+                const merged = { ...prev };
+                conversationsData.conversations.forEach((conv) => {
+                    merged[conv.conversation_id] = {
+                        ...conv,
+                        messages: merged[conv.conversation_id]?.messages ?? null
+                    };
+                });
+                return merged;
+            });
         }
         fetchData();
     }, []);
@@ -85,19 +96,42 @@ export default function Chat() {
     useEffect(() => {
         if (!socket) return;
 
+        console.log("Subscribing to newMessage, socket id:", socket.id);
+
         function handleNewMessage(message) {
+            console.log("newMessage received:", message.id, "on socket:", socket.id);
+
             setConversations((prev) => {
-                const conv = prev[message.conversation_id];
-                if (!conv) return prev;
+                const existing = prev[message.conversation_id];
+
+                if (!existing) {
+                    return {
+                        ...prev,
+                        [message.conversation_id]: {
+                            conversation_id: message.conversation_id,
+                            username: message.username,
+                            encrypted_message: message.encrypted_message,
+                            last_message_time: message.created_at,
+                            messages: [message]
+                        }
+                    };
+                }
+
+                const alreadyExists = existing.messages?.some(m => m.id === message.id);
+                if (alreadyExists) {
+                    console.log("Duplicate detected, skipping:", message.id);
+                    return prev;
+                }
 
                 return {
                     ...prev,
                     [message.conversation_id]: {
-                        ...conv,
+                        ...existing,
                         encrypted_message: message.encrypted_message,
-                        messages: conv.messages
-                            ? [...conv.messages, message]
-                            : conv.messages
+                        last_message_time: message.created_at,
+                        messages: existing.messages
+                            ? [...existing.messages, message]
+                            : existing.messages
                     }
                 };
             });
@@ -106,16 +140,60 @@ export default function Chat() {
         socket.on("newMessage", handleNewMessage);
 
         return () => {
+            console.log("Unsubscribing from newMessage, socket id:", socket.id);
             socket.off("newMessage", handleNewMessage);
         };
     }, [socket]);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        function handleNewConversation(conversation) {
+
+            setConversations((prev) => ({
+                ...prev,
+                [conversation.conversation_id]: {
+                    conversation_id: conversation.conversation_id,
+                    username: conversation.username,
+                    encrypted_message: "",
+                    last_message_time: new Date(),
+                    messages: []
+                }
+            }));
+
+        }
+
+        socket.on("newConversation", handleNewConversation);
+
+        return () => {
+            socket.off("newConversation", handleNewConversation);
+        };
+
+    }, [socket]);
+
+    useEffect(() => {
+        if (query.length < 2) {
+            setSearchResults([]);
+            return;
+        }
+
+        const timeout = setTimeout(async () => {
+            const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`, {
+                credentials: "include"
+            });
+            const data = await response.json();
+            setSearchResults(data);
+        }, 300);
+
+        return () => clearTimeout(timeout);
+    }, [query]);
 
     async function selectConversation(id) {
         setSelectedConversationId(id);
         setShowConversations(false);
 
-        if (conversations[id]?.messages) {
-            return;
+        if (socket) {
+            socket.emit("joinConversation", id);
         }
 
         const response = await fetch(`/api/message/${id}`);
@@ -163,20 +241,84 @@ export default function Chat() {
         setMessageText("");
     }
 
+    async function openConversation(targetUserId) {
+
+        const response = await fetch("/api/conversations", {
+            method: "POST",
+            credentials: "include",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                userId: targetUserId
+            })
+        });
+
+        const conversation = await response.json();
+
+        if (!response.ok) {
+            console.error(conversation.error);
+            return;
+        }
+
+        const id = conversation.conversationId;
+
+        const messagesResponse = await fetch(`/api/message/${id}`, {
+            credentials: "include"
+        });
+
+        const messagesData = await messagesResponse.json();
+
+        setConversations((prev) => ({
+            ...prev,
+            [id]: {
+                ...(prev[id] || {}),
+                conversation_id: id,
+                username: conversation.username,
+                encrypted_message: messagesData.messages.length > 0
+                    ? messagesData.messages[messagesData.messages.length - 1].encrypted_message
+                    : "",
+                last_message_time: messagesData.messages.length > 0
+                    ? messagesData.messages[messagesData.messages.length - 1].created_at
+                    : new Date(),
+                messages: messagesData.messages
+            }
+        }));
+
+        setSelectedConversationId(id);
+        setShowConversations(false);
+
+        if (socket) {
+            socket.emit("joinConversation", id);
+        }
+
+        console.log({
+            id,
+            selectedConversationId,
+            conversations
+        });
+    }
+
     async function handleLogout() {
         await logout();
         navigate('/auth');
     }
 
-    const conversationList = Object.values(conversations).filter((conv) => {
-        if (!search.trim()) return true;
+    const conversationList = Object.values(conversations)
+        .filter((conv) => {
+            if (!search.trim()) return true;
 
-        const term = search.trim().toLowerCase();
-        const usernameMatch = conv.username?.toLowerCase().includes(term);
-        const messageMatch = conv.encrypted_message?.toLowerCase().includes(term);
+            const term = search.trim().toLowerCase();
 
-        return usernameMatch || messageMatch;
-    });
+            return (
+                conv.username?.toLowerCase().includes(term) ||
+                conv.encrypted_message?.toLowerCase().includes(term)
+            );
+        })
+        .sort((a, b) => {
+            return new Date(b.last_message_time) - new Date(a.last_message_time);
+        });
+
     const activeConversation = selectedConversationId ? conversations[selectedConversationId] : null;
     const activeMessages = activeConversation?.messages ?? [];
 
@@ -242,14 +384,14 @@ export default function Chat() {
                                     <motion.div
                                         variants={{
                                             rest: { width: 0, opacity: 0 },
-                                            hover: { width: 75, opacity: 1 }
+                                            hover: { width: 80, opacity: 1 }
                                         }}
                                         transition={{ duration: 0.25 }}
                                         style={{
                                             overflow: "hidden",
                                             whiteSpace: "nowrap"
                                         }}>
-                                        <span className="m-2">
+                                        <span className="m-2 mx-2">
                                             New chat
                                         </span>
                                     </motion.div>
@@ -296,6 +438,18 @@ export default function Chat() {
                                     </Card>
                                 </motion.div>
                             ))}
+                            <Input
+                                value={query}
+                                onChange={(e) => setQuery(e.target.value)}
+                                placeholder="Search users..."
+                            />
+                            <div>
+                                {searchResults.map(user => (
+                                    <div key={user.id} onClick={() => openConversation(user.id)}>
+                                        {user.username}
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </Col>
                     <Col xs={12} lg={10} className={`flex-grow-1 bg-light border ${!showConversations ? '' : 'd-none d-lg-block'}`}>
@@ -312,7 +466,7 @@ export default function Chat() {
 
                                     </div>
                                 </CardHeader>
-                                <CardBody className="flex-grow-1 d-flex flex-column overflow-auto hide-scrollbar justify-content-end" style={{ flexBasis: 0, minHeight: 0, paddingBottom: "4rem" }}>
+                                <CardBody className="flex-grow-1 d-flex flex-column overflow-scroll hide-scrollbar justify-content-end" style={{ flexBasis: 0, minHeight: 0, paddingBottom: "4rem" }}>
                                     {activeMessages.map((message) => (
                                         <div key={message.id} className={`d-flex mb-2 ${message.sender_id == userData.userId
                                             ? "justify-content-end"
