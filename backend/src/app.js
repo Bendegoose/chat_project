@@ -362,7 +362,6 @@ app.post("/api/sendMessage", authenticateToken, async (req, res) => {
     );
 
     members.rows.forEach((member) => {
-        console.log(`Emitting newMessage to user_${member.user_id}`);
         io.to(`user_${member.user_id}`).emit("newMessage", newMessage);
     });
     members.rows.forEach((member) => {
@@ -434,12 +433,7 @@ io.use((socket, next) => {
 });
 
 io.on("connection", (socket) => {
-    console.log(`User connected: ${socket.username} (${socket.userId}) — joining room user_${socket.userId}`);
-    socket.join(`user_${socket.userId}`);
-
-     const room = io.sockets.adapter.rooms.get(`user_${socket.userId}`);
-    console.log(`Room user_${socket.userId} size after join:`, room ? room.size : 0);
-    //console.log(`User connected: ${socket.username} (${socket.userId})`);
+    console.log(`User connected: ${socket.username} (${socket.userId})`);
 
     socket.join(`user_${socket.userId}`);
 

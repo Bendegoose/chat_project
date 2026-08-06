@@ -96,11 +96,7 @@ export default function Chat() {
     useEffect(() => {
         if (!socket) return;
 
-        console.log("Subscribing to newMessage, socket id:", socket.id);
-
         function handleNewMessage(message) {
-            console.log("newMessage received:", message.id, "on socket:", socket.id);
-
             setConversations((prev) => {
                 const existing = prev[message.conversation_id];
 
@@ -119,7 +115,6 @@ export default function Chat() {
 
                 const alreadyExists = existing.messages?.some(m => m.id === message.id);
                 if (alreadyExists) {
-                    console.log("Duplicate detected, skipping:", message.id);
                     return prev;
                 }
 
@@ -140,7 +135,6 @@ export default function Chat() {
         socket.on("newMessage", handleNewMessage);
 
         return () => {
-            console.log("Unsubscribing from newMessage, socket id:", socket.id);
             socket.off("newMessage", handleNewMessage);
         };
     }, [socket]);
@@ -291,12 +285,6 @@ export default function Chat() {
         if (socket) {
             socket.emit("joinConversation", id);
         }
-
-        console.log({
-            id,
-            selectedConversationId,
-            conversations
-        });
     }
 
     async function handleLogout() {
