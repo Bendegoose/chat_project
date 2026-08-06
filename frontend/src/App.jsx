@@ -3,18 +3,21 @@ import Chat from './components/Chat';
 import Auth from './components/Auth';
 import ProtectedRoutes from './utils/ProtectedRoutes';
 import { AuthProvider } from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext';
 
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route element={<Auth />} path='/auth' />
-          <Route element={<ProtectedRoutes />}>
-            <Route element={<Chat />} path='/' />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <SocketProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route element={<Auth />} path='/auth' />
+            <Route element={<ProtectedRoutes />}>
+              <Route element={<Chat />} path='/' />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </SocketProvider>
     </AuthProvider>
   );
 }

@@ -4,8 +4,11 @@ const cookieParser = require('cookie-parser');
 require('dotenv').config();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const http = require('http');
+const { Server } = require('socket.io');
 const database = require('./database');
 const authenticateToken = require('./middleware/auth');
+const cookie = require('cookie');
 
 const app = express();
 const PORT = process.env.PORT;
@@ -178,7 +181,7 @@ app.post("/api/sendMessage", authenticateToken, async (req, res) => {
         });
     }
 
-    await database.query(
+    const insertResult = await database.query(
         `
         INSERT INTO messages (
             conversation_id,
@@ -186,9 +189,21 @@ app.post("/api/sendMessage", authenticateToken, async (req, res) => {
             encrypted_message
         )
         VALUES ($1, $2, $3)
+        RETURNING id, created_at
         `,
         [conversationId, userId, message]
-    )
+    );
+
+    const newMessage = {
+        id: insertResult.rows[0].id,
+        conversation_id: conversationId,
+        sender_id: userId,
+        username: req.user.username,
+        encrypted_message: message,
+        created_at: insertResult.rows[0].created_at
+    };
+
+    io.to(`conversation_${conversationId}`).emit("newMessage", newMessage);
 
     res.json({ success: true });
 });
@@ -206,6 +221,59 @@ app.get("/api/me", authenticateToken, async (req, res) => {
     res.json({ userId: req.user.userId, username: req.user.username });
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+const io = new Server(server, {
+    cors: {
+        origin: process.env.CLIENT_URL,
+        credentials: true
+    }
+});
+
+const cookieParserMiddleware = cookieParser();
+
+io.use((socket, next) => {
+    cookieParserMiddleware(socket.request, {}, (err) => {
+        if (err) {
+            return next(new Error("Authentication error: cookie parse failed"));
+        }
+
+        try {
+            const token = socket.request.cookies.token;
+
+            if (!token) {
+                return next(new Error("Authentication error: no token"));
+            }
+
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+            socket.userId = decoded.userId;
+            socket.username = decoded.username;
+
+            next();
+        } catch (err) {
+            console.error("Socket auth error:", err.name, err.message);
+            next(new Error("Authentication error: invalid token"));
+        }
+    });
+});
+
+io.on("connection", (socket) => {
+    console.log(`User connected: ${socket.username} (${socket.userId})`);
+
+    socket.on("joinConversation", (conversationId) => {
+        socket.join(`conversation_${conversationId}`);
+    });
+
+    socket.on("leaveConversation", (conversationId) => {
+        socket.leave(`conversation_${conversationId}`);
+    });
+
+    socket.on("disconnect", () => {
+        console.log(`User disconnected: ${socket.username}`);
+    });
+});
+
+server.listen(PORT, () => {
     console.log(`Backend running: http://localhost:${PORT}`);
 });

@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 import { useState, useEffect } from 'react'
 import { Divide as Hamburger } from 'hamburger-react'
 import { Plus } from "lucide-react";
 import { motion } from "framer-motion";
+import { io } from "socket.io-client";
 import "../styles/messages.css"
 import {
     Container,
@@ -28,6 +30,7 @@ import {
 
 export default function Chat() {
     const { logout } = useAuth();
+    const { socket } = useSocket();
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [showConversations, setShowConversations] = useState(false);
@@ -66,9 +69,46 @@ export default function Chat() {
             });
             setConversations(conversationsObj);
         }
-
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (!socket || !selectedConversationId) return;
+
+        socket.emit("joinConversation", selectedConversationId);
+
+        return () => {
+            socket.emit("leaveConversation", selectedConversationId);
+        };
+    }, [socket, selectedConversationId]);
+
+    useEffect(() => {
+        if (!socket) return;
+
+        function handleNewMessage(message) {
+            setConversations((prev) => {
+                const conv = prev[message.conversation_id];
+                if (!conv) return prev;
+
+                return {
+                    ...prev,
+                    [message.conversation_id]: {
+                        ...conv,
+                        encrypted_message: message.encrypted_message,
+                        messages: conv.messages
+                            ? [...conv.messages, message]
+                            : conv.messages
+                    }
+                };
+            });
+        }
+
+        socket.on("newMessage", handleNewMessage);
+
+        return () => {
+            socket.off("newMessage", handleNewMessage);
+        };
+    }, [socket]);
 
     async function selectConversation(id) {
         setSelectedConversationId(id);
@@ -109,7 +149,6 @@ export default function Chat() {
             },
             body: JSON.stringify({
                 message: trimmed,
-                userId: userData.userId,
                 conversationId: selectedConversationId
             }),
         });
@@ -120,23 +159,6 @@ export default function Chat() {
             console.error("Failed to send message:", data.error);
             return;
         }
-
-        const newMessage = {
-            id: data.id ?? crypto.randomUUID(),
-            sender_id: userData.userId,
-            encrypted_message: trimmed,
-            created_at: new Date().toISOString(),
-            username: userData.username
-        };
-
-        setConversations((prev) => ({
-            ...prev,
-            [selectedConversationId]: {
-                ...prev[selectedConversationId],
-                encrypted_message: trimmed,
-                messages: [...(prev[selectedConversationId]?.messages ?? []), newMessage]
-            }
-        }));
 
         setMessageText("");
     }
@@ -276,7 +298,6 @@ export default function Chat() {
                             ))}
                         </div>
                     </Col>
-
                     <Col xs={12} lg={10} className={`flex-grow-1 bg-light border ${!showConversations ? '' : 'd-none d-lg-block'}`}>
                         <div className="h-100 p-2 message-card">
                             <Card className="h-100 position-relative d-flex flex-column">
