@@ -364,10 +364,6 @@ app.post("/api/sendMessage", authenticateToken, async (req, res) => {
     members.rows.forEach((member) => {
         io.to(`user_${member.user_id}`).emit("newMessage", newMessage);
     });
-    members.rows.forEach((member) => {
-        io.to(`user_${member.user_id}`).emit("newMessage", newMessage);
-    });
-
 
     res.json({
         success: true,
